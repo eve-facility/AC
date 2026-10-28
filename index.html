@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>EPC 에어컨 장애신고 · Báo hỏng điều hòa</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+
+:root{
+  --bg:#eef1f4; --panel:#fff; --ink:#16212e; --muted:#5d6b7a; --line:#d5dbe2; --accent:#1F4E78; --accent-ink:#fff;
+  --st-ok:#4b7f52; --st-new:#d32f2f; --st-doing:#e67e00; --st-hold:#7b3fa0; --st-done:#1565c0;
+  --font:"Segoe UI","Malgun Gothic","Noto Sans KR",system-ui,sans-serif; --mono:Consolas,"DejaVu Sans Mono",monospace;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);font-size:14px}
+button,input,select,textarea{font:inherit}
+.btn{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;padding:8px 12px;cursor:pointer;min-height:38px}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.btn.sm{min-height:30px;padding:4px 9px;font-size:12.5px}
+.btn:disabled{opacity:.5;cursor:default}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.hidden{display:none!important}
+.pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;color:#fff;white-space:nowrap}
+.st-접수{background:var(--st-new)} .st-처리중{background:var(--st-doing)} .st-보류{background:var(--st-hold)} .st-완료{background:var(--st-done)} .st-취소{background:#888}
+.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:9px 16px;border-radius:8px;z-index:9999;font-size:13px}
+
+
+/* map markers */
+.mk{display:flex;align-items:center;gap:3px;white-space:nowrap;width:max-content;pointer-events:auto}
+.mk .sq{width:13px;height:13px;border-radius:3px;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.5);flex:none}
+.mk .mkl{font-family:var(--mono);font-weight:700;font-size:11px;color:#fff;padding:1px 4px;border-radius:3px;line-height:1.2}
+.mk.alert .sq{animation:pulse 1.2s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 1px rgba(0,0,0,.5),0 0 0 0 rgba(211,47,47,.6)}100%{box-shadow:0 0 0 1px rgba(0,0,0,.5),0 0 0 12px rgba(211,47,47,0)}}
+@media (prefers-reduced-motion:reduce){.mk.alert .sq{animation:none}}
+
+/* ---------- report (mobile) ---------- */
+#report{max-width:560px;margin:0 auto;padding:14px 16px 40px;display:flex;flex-direction:column;gap:12px}
+.rhead{display:flex;justify-content:space-between;align-items:center}
+.rhead .brand{font-size:13px;color:var(--muted);font-weight:600}
+.lang{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.lang button{border:0;background:var(--panel);padding:5px 10px;cursor:pointer;font-weight:600;color:var(--muted)}
+.lang button[aria-pressed="true"]{background:var(--accent);color:#fff}
+.unit{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:8px}
+.unit .code{font-family:var(--mono);font-size:30px;font-weight:800;letter-spacing:.5px}
+.unit .sub{color:var(--muted)}
+#mini{height:190px;border-radius:8px;border:1px solid var(--line)}
+.warn{background:#fff4e5;border:1px solid #f0c27a;border-radius:10px;padding:10px 12px;font-size:13.5px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.card h3{margin:0;font-size:15px}
+.sym{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.sym button{border:1.5px solid var(--line);background:var(--panel);border-radius:10px;padding:12px 8px;cursor:pointer;font-weight:600;min-height:52px;text-align:center}
+.sym button[aria-pressed="true"]{border-color:var(--accent);background:#e7eef6;color:var(--accent)}
+.fld{display:flex;flex-direction:column;gap:4px}
+.fld label{font-size:13px;font-weight:600}
+.fld input,.fld textarea{border:1px solid var(--line);border-radius:8px;padding:10px;font-size:16px;background:#fff}
+.fld textarea{min-height:80px;resize:vertical}
+.fld .opt{font-weight:400;color:var(--muted)}
+.photo img{max-width:100%;border-radius:8px;margin-top:6px}
+.submit{min-height:52px;font-size:16px}
+.done{text-align:center;padding:30px 16px;display:flex;flex-direction:column;gap:10px;align-items:center}
+.done .ok{width:64px;height:64px;border-radius:50%;background:var(--st-ok);color:#fff;font-size:36px;display:grid;place-items:center}
+.done .rid{font-family:var(--mono);font-size:22px;font-weight:800}
+
+
+.find{display:flex;gap:8px} .find input{flex:1;border:1px solid var(--line);border-radius:8px;padding:10px;font-size:16px;font-family:var(--mono);text-transform:uppercase}
+</style>
+</head>
+<body>
+<div id="report">
+  <div class="rhead">
+    <span class="brand" data-t="brand"></span>
+    <span class="lang"><button id="lgVi" aria-pressed="false">VI</button><button id="lgKo" aria-pressed="false">KO</button></span>
+  </div>
+  <div id="rBody"></div>
+</div>
+<script>
+/* ===== 설정: Apps Script 웹앱 주소 (배포 URL, /exec 로 끝남) ===== */
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbzRN7Wy6e5zVKdybaV8wd2zudVP-UlfERDVaZ1vSEwIGsw5ewwGw9n0aRUrf5aM088q2g/exec';
+
+const P = { ac: (new URLSearchParams(location.search).get('ac') || '').trim().toUpperCase() };
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function toast(m){ let t=document.querySelector('.toast'); if(!t){t=document.createElement('div');t.className='toast';t.setAttribute('role','status');document.body.append(t);} t.textContent=m; clearTimeout(t._h); t._h=setTimeout(()=>t.remove(),2600); }
+const lsGet = k => { try{ return localStorage.getItem(k); }catch(e){ return null; } };
+const lsSet = (k,v) => { try{ localStorage.setItem(k,v); }catch(e){} };
+/* Google 로그인 쿠키를 보내지 않는 순수 요청 → 휴대폰의 Google 계정 상태와 무관 */
+async function api(name, params){
+  const q = new URLSearchParams(Object.assign({api:name}, params||{}));
+  const r = await fetch(GAS_URL + '?' + q.toString(), {credentials:'omit', redirect:'follow'});
+  const j = await r.json(); if (!j.ok) throw new Error(j.error||'error'); return j.data;
+}
+async function post(body){
+  const r = await fetch(GAS_URL, {method:'POST', credentials:'omit', redirect:'follow', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify(body)});
+  const j = await r.json(); if (!j.ok) throw new Error(j.error||'error'); return j.data;
+}
+const call = (fn, arg) => fn==='getUnit' ? api('unit',{ac:arg}) : fn==='getFloorImage' ? api('floor',{floor:arg}) : fn==='submitReport' ? post(Object.assign({api:'report'}, arg)) : Promise.reject(new Error(fn));
+const imgCache = {};
+async function floorImage(floor){ if (!imgCache[floor]) imgCache[floor] = call('getFloorImage', floor); return imgCache[floor]; }
+function imgSize(url){ return new Promise(r => { const i = new Image(); i.onload = () => r([i.naturalWidth, i.naturalHeight]); i.onerror = () => r([1600,800]); i.src = url; }); }
+
+const SYM = [
+  ['냉방 안 됨','Không mát'], ['전원 안 켜짐','Không lên nguồn'], ['물 떨어짐','Chảy nước'], ['소음·진동','Tiếng ồn, rung'],
+  ['냄새','Có mùi'], ['에러 표시·깜박임','Báo lỗi, đèn nháy'], ['리모컨·제어 이상','Lỗi điều khiển'], ['기타','Khác']
+];
+const T = {
+  ko:{brand:'EPC 에어컨 장애신고', loc:'위치', floor:'층', open:'이미 신고되어 처리 중입니다', openMore:'같은 문제라면 다시 신고하지 않아도 됩니다. 다른 문제라면 아래에서 신고하세요.',
+      sym:'어떤 문제인가요?', detail:'자세한 내용', opt:'(선택)', name:'이름', dept:'부서', phone:'연락처', photo:'사진', photoBtn:'사진 찍기 / 선택',
+      submit:'신고하기', sending:'보내는 중…', need:'증상을 고르고 이름과 부서를 입력하세요.', done:'신고가 접수되었습니다', doneSub:'공무팀에 바로 알렸습니다. 아래 번호로 문의할 수 있습니다.',
+      again:'다른 문제 신고하기', notFound:'등록되지 않은 에어컨 번호입니다', notFoundSub:'라벨의 번호를 공무팀에 알려 주세요.', fail:'보내지 못했습니다. 다시 눌러 주세요.', status:{접수:'접수',처리중:'처리중',보류:'보류'}},
+  vi:{brand:'Báo hỏng điều hòa EPC', loc:'Vị trí', floor:'Tầng', open:'Máy này đã được báo hỏng và đang xử lý', openMore:'Nếu cùng sự cố, không cần báo lại. Nếu khác, hãy báo bên dưới.',
+      sym:'Sự cố là gì?', detail:'Mô tả thêm', opt:'(không bắt buộc)', name:'Họ tên', dept:'Bộ phận', phone:'Số điện thoại', photo:'Ảnh', photoBtn:'Chụp / chọn ảnh',
+      submit:'Gửi báo hỏng', sending:'Đang gửi…', need:'Hãy chọn sự cố và nhập họ tên, bộ phận.', done:'Đã nhận báo hỏng', doneSub:'Đã thông báo ngay cho Phòng Công vụ. Có thể hỏi lại bằng mã dưới đây.',
+      again:'Báo sự cố khác', notFound:'Mã điều hòa chưa được đăng ký', notFoundSub:'Hãy báo mã trên tem cho Phòng Công vụ.', fail:'Gửi không thành công. Hãy bấm lại.', status:{접수:'Đã nhận',처리중:'Đang xử lý',보류:'Tạm hoãn'}}
+};
+let lang = lsGet('ac_lang') || ((navigator.language||'').toLowerCase().startsWith('ko') ? 'ko' : 'vi');
+let RU = null, rSym = null, rPhoto = '';
+
+async function startReport(){
+  $('report').classList.remove('hidden');
+  $('lgVi').onclick = () => setLang('vi'); $('lgKo').onclick = () => setLang('ko');
+  $('rBody').innerHTML = '<div class="card">…</div>';
+  try { RU = await call('getUnit', P.ac); } catch(e){ RU = {found:false, code:P.ac}; }
+  setLang(lang);
+}
+function setLang(l){ lang=l; lsSet('ac_lang',l); $('lgVi').setAttribute('aria-pressed', l==='vi'); $('lgKo').setAttribute('aria-pressed', l==='ko'); renderReport(); }
+function tt(k){ return T[lang][k]; }
+function symText(ko){ const s=SYM.find(x=>x[0]===ko); return s ? (lang==='vi'? s[1] : s[0]) : ko; }
+
+function renderReport(){
+  document.querySelectorAll('[data-t]').forEach(n => n.textContent = tt(n.dataset.t));
+  if (!RU) return;
+  const b = $('rBody');
+  if (!RU.found){
+    b.innerHTML = `<div class="unit"><div class="code">${esc(RU.code||'—')}</div><div><b>${tt('notFound')}</b></div><div class="sub">${tt('notFoundSub')}</div></div>`;
+    return;
+  }
+  const u = RU.unit;
+  b.innerHTML = `
+  <div class="unit">
+    <div class="code">${esc(u.code)}</div>
+    <div class="sub">${tt('floor')} ${esc(u.floor)}${u.loc ? ' · ' + esc(u.loc) : ''}</div>
+    ${u.x!=null ? '<div id="mini"></div>' : ''}
+  </div>
+  ${RU.open.length ? `<div class="warn"><b>${tt('open')}</b><br>${RU.open.map(o=>`· ${esc(symText(o.symptom))} – ${esc(tt('status')[o.status]||o.status)} (${esc(o.at)})`).join('<br>')}<br><span style="color:#7a5a20">${tt('openMore')}</span></div>` : ''}
+  <form class="card" id="rForm" novalidate>
+    <h3>${tt('sym')}</h3>
+    <div class="sym">${SYM.map((s,i)=>`<button type="button" data-i="${i}" aria-pressed="${rSym===i}">${esc(lang==='vi'? s[1] : s[0])}${lang==='vi'?`<br><small style="font-weight:400;color:var(--muted)">${esc(s[0])}</small>`:''}</button>`).join('')}</div>
+    <div class="fld"><label for="fDetail">${tt('detail')} <span class="opt">${tt('opt')}</span></label><textarea id="fDetail"></textarea></div>
+    <div class="fld"><label for="fName">${tt('name')}</label><input id="fName" autocomplete="name" value="${esc(lsGet('ac_name')||'')}"></div>
+    <div class="fld"><label for="fDept">${tt('dept')}</label><input id="fDept" value="${esc(lsGet('ac_dept')||'')}"></div>
+    <div class="fld"><label for="fPhone">${tt('phone')} <span class="opt">${tt('opt')}</span></label><input id="fPhone" type="tel" inputmode="tel" value="${esc(lsGet('ac_phone')||'')}"></div>
+    <div class="fld photo"><label>${tt('photo')} <span class="opt">${tt('opt')}</span></label>
+      <input id="fPhoto" type="file" accept="image/*" capture="environment" class="hidden">
+      <button type="button" class="btn" id="btnPhoto">${tt('photoBtn')}</button>
+      <img id="pv" class="${rPhoto?'':'hidden'}" src="${rPhoto}" alt="">
+    </div>
+    <div class="err hidden" id="rErr"></div>
+    <button type="submit" class="btn primary submit" id="btnSend">${tt('submit')}</button>
+  </form>`;
+  b.querySelectorAll('.sym button').forEach(x => x.onclick = () => { rSym = +x.dataset.i; b.querySelectorAll('.sym button').forEach(y => y.setAttribute('aria-pressed', y===x)); });
+  $('btnPhoto').onclick = () => $('fPhoto').click();
+  $('fPhoto').onchange = e => { const f=e.target.files[0]; if(f) shrink(f).then(d=>{ rPhoto=d; $('pv').src=d; $('pv').classList.remove('hidden'); }); };
+  $('rForm').onsubmit = sendReport;
+  if (u.x != null) miniMap(u);
+}
+function shrink(file){
+  return new Promise(res => { const fr=new FileReader(); fr.onload=()=>{ const im=new Image(); im.onload=()=>{ const m=1280, s=Math.min(1,m/Math.max(im.width,im.height)); const c=document.createElement('canvas'); c.width=Math.round(im.width*s); c.height=Math.round(im.height*s); c.getContext('2d').drawImage(im,0,0,c.width,c.height); res(c.toDataURL('image/jpeg',0.8)); }; im.src=fr.result; }; fr.readAsDataURL(file); });
+}
+async function miniMap(u){
+  const url = await floorImage(u.floor); if (!url || !$('mini')) return;
+  const [w,h] = await imgSize(url);
+  const m = L.map('mini',{crs:L.CRS.Simple, zoomControl:false, attributionControl:false, minZoom:-3, maxZoom:2});
+  const bounds=[[0,0],[h,w]]; L.imageOverlay(url,bounds).addTo(m);
+  const ll=[h-u.y*h, u.x*w];
+  L.marker(ll,{icon:L.divIcon({className:'',html:`<div class="mk alert"><span class="sq" style="background:var(--st-new)"></span><span class="mkl" style="background:var(--st-new)">${esc(u.code.split('-').pop())}</span></div>`,iconSize:null,iconAnchor:[7,7]})}).addTo(m);
+  m.fitBounds(bounds); m.setView(ll, Math.min(m.getZoom()+1.5, 1));
+}
+async function sendReport(e){
+  e.preventDefault();
+  const name=$('fName').value.trim(), dept=$('fDept').value.trim(), phone=$('fPhone').value.trim();
+  if (rSym==null || !name || !dept){ $('rErr').textContent=tt('need'); $('rErr').classList.remove('hidden'); return; }
+  lsSet('ac_name',name); lsSet('ac_dept',dept); lsSet('ac_phone',phone);
+  const btn=$('btnSend'); btn.disabled=true; btn.textContent=tt('sending');
+  try{
+    const r = await call('submitReport',{code:RU.unit.code, symptom:SYM[rSym][0], detail:$('fDetail').value.trim(), name, dept, phone, photo:rPhoto});
+    rSym=null; rPhoto='';
+    $('rBody').innerHTML = `<div class="card done"><div class="ok">✓</div><h3>${tt('done')}</h3><div class="rid">${esc(r.id)}</div><div class="sub">${tt('doneSub')}</div><button class="btn" id="btnAgain">${tt('again')}</button></div>`;
+    $('btnAgain').onclick = async () => { RU = await call('getUnit', RU.unit.code); renderReport(); };
+  }catch(err){
+    btn.disabled=false; btn.textContent=tt('submit');
+    $('rErr').textContent = tt('fail') + ' ' + (err && err.message ? err.message : ''); $('rErr').classList.remove('hidden');
+  }
+}
+
+
+/* 번호 직접 입력 (라벨이 훼손됐거나 주소만 열었을 때) */
+T.ko.findTitle='에어컨 번호 입력'; T.ko.findHint='라벨에 적힌 번호를 입력하세요 (예: A-2F-A01)'; T.ko.go='열기';
+T.vi.findTitle='Nhập mã điều hòa'; T.vi.findHint='Nhập mã trên tem (VD: A-2F-A01)'; T.vi.go='Mở';
+const _render = renderReport;
+renderReport = function(){
+  if (!P.ac){
+    document.querySelectorAll('[data-t]').forEach(n => n.textContent = tt(n.dataset.t));
+    $('rBody').innerHTML = `<form class="card" id="fFind"><h3>${tt('findTitle')}</h3><div class="sub">${tt('findHint')}</div><div class="find"><input id="fCode" autocomplete="off" placeholder="A-2F-A01"><button class="btn primary">${tt('go')}</button></div></form>`;
+    $('fFind').onsubmit = e => { e.preventDefault(); const c=$('fCode').value.trim().toUpperCase(); if(c) location.search='?ac='+encodeURIComponent(c); };
+    return;
+  }
+  _render();
+};
+(async function(){
+  $('lgVi').onclick = () => setLang('vi'); $('lgKo').onclick = () => setLang('ko');
+  if (P.ac){
+    $('rBody').innerHTML = '<div class="card">…</div>';
+    try { RU = await call('getUnit', P.ac); } catch(e) { RU = {found:false, code:P.ac}; toast('Không kết nối được / 연결 실패'); }
+  }
+  setLang(lang);
+})();
+</script>
+</body>
+</html>
