@@ -56,7 +56,8 @@ button,input,select,textarea{font:inherit}
 .sym button[aria-pressed="true"]{border-color:var(--accent);background:#e7eef6;color:var(--accent)}
 .fld{display:flex;flex-direction:column;gap:4px}
 .fld label{font-size:13px;font-weight:600}
-.fld input,.fld textarea{border:1px solid var(--line);border-radius:8px;padding:10px;font-size:16px;background:#fff}
+.fld input,.fld textarea,.fld select{border:1px solid var(--line);border-radius:8px;padding:10px;font-size:16px;background:#fff;color:var(--ink)}
+.fld select + input{margin-top:6px}
 .fld textarea{min-height:80px;resize:vertical}
 .fld .opt{font-weight:400;color:var(--muted)}
 .photo img{max-width:100%;border-radius:8px;margin-top:6px}
@@ -108,16 +109,16 @@ const SYM = [
 ];
 const T = {
   ko:{brand:'EPC 에어컨 장애신고', loc:'위치', floor:'층', open:'이미 신고되어 처리 중입니다', openMore:'같은 문제라면 다시 신고하지 않아도 됩니다. 다른 문제라면 아래에서 신고하세요.',
-      sym:'어떤 문제인가요?', detail:'자세한 내용', opt:'(선택)', name:'이름', dept:'부서', phone:'연락처', photo:'사진', photoBtn:'사진 찍기 / 선택',
-      submit:'신고하기', sending:'보내는 중…', need:'증상을 고르고 이름과 부서를 입력하세요.', done:'신고가 접수되었습니다', doneSub:'공무팀에 바로 알렸습니다. 아래 번호로 문의할 수 있습니다.',
+      sym:'어떤 문제인가요?', symMulti:'(여러 개 선택 가능)', deptPick:'부서를 고르세요', deptOther:'기타 (직접 입력)', detail:'자세한 내용', opt:'(선택)', name:'이름', dept:'부서', phone:'연락처', photo:'사진', photoBtn:'사진 찍기 / 선택',
+      submit:'신고하기', sending:'보내는 중…', need:'증상을 하나 이상 고르고 이름과 부서를 입력하세요.', done:'신고가 접수되었습니다', doneSub:'공무팀에 바로 알렸습니다. 아래 번호로 문의할 수 있습니다.',
       again:'다른 문제 신고하기', notFound:'등록되지 않은 에어컨 번호입니다', notFoundSub:'라벨의 번호를 공무팀에 알려 주세요.', fail:'보내지 못했습니다. 다시 눌러 주세요.', status:{접수:'접수',처리중:'처리중',보류:'보류'}},
   vi:{brand:'Báo hỏng điều hòa EPC', loc:'Vị trí', floor:'Tầng', open:'Máy này đã được báo hỏng và đang xử lý', openMore:'Nếu cùng sự cố, không cần báo lại. Nếu khác, hãy báo bên dưới.',
-      sym:'Sự cố là gì?', detail:'Mô tả thêm', opt:'(không bắt buộc)', name:'Họ tên', dept:'Bộ phận', phone:'Số điện thoại', photo:'Ảnh', photoBtn:'Chụp / chọn ảnh',
-      submit:'Gửi báo hỏng', sending:'Đang gửi…', need:'Hãy chọn sự cố và nhập họ tên, bộ phận.', done:'Đã nhận báo hỏng', doneSub:'Đã thông báo ngay cho Phòng Công vụ. Có thể hỏi lại bằng mã dưới đây.',
+      sym:'Sự cố là gì?', symMulti:'(có thể chọn nhiều)', deptPick:'Chọn bộ phận', deptOther:'Khác (tự nhập)', detail:'Mô tả thêm', opt:'(không bắt buộc)', name:'Họ tên', dept:'Bộ phận', phone:'Số điện thoại', photo:'Ảnh', photoBtn:'Chụp / chọn ảnh',
+      submit:'Gửi báo hỏng', sending:'Đang gửi…', need:'Hãy chọn ít nhất một sự cố và nhập họ tên, bộ phận.', done:'Đã nhận báo hỏng', doneSub:'Đã thông báo ngay cho Phòng Công vụ. Có thể hỏi lại bằng mã dưới đây.',
       again:'Báo sự cố khác', notFound:'Mã điều hòa chưa được đăng ký', notFoundSub:'Hãy báo mã trên tem cho Phòng Công vụ.', fail:'Gửi không thành công. Hãy bấm lại.', status:{접수:'Đã nhận',처리중:'Đang xử lý',보류:'Tạm hoãn'}}
 };
 let lang = lsGet('ac_lang') || ((navigator.language||'').toLowerCase().startsWith('ko') ? 'ko' : 'vi');
-let RU = null, rSym = null, rPhoto = '';
+let RU = null, rSym = new Set(), rPhoto = '';
 
 async function startReport(){
   $('report').classList.remove('hidden');
@@ -128,7 +129,16 @@ async function startReport(){
 }
 function setLang(l){ lang=l; lsSet('ac_lang',l); $('lgVi').setAttribute('aria-pressed', l==='vi'); $('lgKo').setAttribute('aria-pressed', l==='ko'); renderReport(); }
 function tt(k){ return T[lang][k]; }
-function symText(ko){ const s=SYM.find(x=>x[0]===ko); return s ? (lang==='vi'? s[1] : s[0]) : ko; }
+function deptField(){
+  const list = (RU && RU.depts && RU.depts.length) ? RU.depts : [];
+  const last = lsGet('ac_dept') || '';
+  const inList = list.indexOf(last) >= 0;
+  const opts = [`<option value="">${tt('deptPick')}</option>`]
+    .concat(list.map(d => `<option value="${esc(d)}"${d===last?' selected':''}>${esc(d)}</option>`))
+    .concat([`<option value="__other"${(!inList && last)?' selected':''}>${tt('deptOther')}</option>`]);
+  return `<select id="fDeptSel">${opts.join('')}</select><input id="fDept" class="${(!inList && last)?'':'hidden'}" placeholder="${tt('deptOther')}" value="${(!inList && last)?esc(last):''}">`;
+}
+function symText(ko){ return String(ko||'').split(/\s*,\s*/).map(k => { const s=SYM.find(x=>x[0]===k); return s ? (lang==='vi'? s[1] : s[0]) : k; }).join(', '); }
 
 function renderReport(){
   document.querySelectorAll('[data-t]').forEach(n => n.textContent = tt(n.dataset.t));
@@ -147,11 +157,11 @@ function renderReport(){
   </div>
   ${RU.open.length ? `<div class="warn"><b>${tt('open')}</b><br>${RU.open.map(o=>`· ${esc(symText(o.symptom))} – ${esc(tt('status')[o.status]||o.status)} (${esc(o.at)})`).join('<br>')}<br><span style="color:#7a5a20">${tt('openMore')}</span></div>` : ''}
   <form class="card" id="rForm" novalidate>
-    <h3>${tt('sym')}</h3>
-    <div class="sym">${SYM.map((s,i)=>`<button type="button" data-i="${i}" aria-pressed="${rSym===i}">${esc(lang==='vi'? s[1] : s[0])}${lang==='vi'?`<br><small style="font-weight:400;color:var(--muted)">${esc(s[0])}</small>`:''}</button>`).join('')}</div>
+    <h3>${tt('sym')} <small style="font-weight:400;color:var(--muted)">${tt('symMulti')}</small></h3>
+    <div class="sym">${SYM.map((s,i)=>`<button type="button" data-i="${i}" aria-pressed="${rSym.has(i)}">${esc(lang==='vi'? s[1] : s[0])}${lang==='vi'?`<br><small style="font-weight:400;color:var(--muted)">${esc(s[0])}</small>`:''}</button>`).join('')}</div>
     <div class="fld"><label for="fDetail">${tt('detail')} <span class="opt">${tt('opt')}</span></label><textarea id="fDetail"></textarea></div>
     <div class="fld"><label for="fName">${tt('name')}</label><input id="fName" autocomplete="name" value="${esc(lsGet('ac_name')||'')}"></div>
-    <div class="fld"><label for="fDept">${tt('dept')}</label><input id="fDept" value="${esc(lsGet('ac_dept')||'')}"></div>
+    <div class="fld"><label for="fDeptSel">${tt('dept')}</label>${deptField()}</div>
     <div class="fld"><label for="fPhone">${tt('phone')} <span class="opt">${tt('opt')}</span></label><input id="fPhone" type="tel" inputmode="tel" value="${esc(lsGet('ac_phone')||'')}"></div>
     <div class="fld photo"><label>${tt('photo')} <span class="opt">${tt('opt')}</span></label>
       <input id="fPhoto" type="file" accept="image/*" capture="environment" class="hidden">
@@ -161,7 +171,8 @@ function renderReport(){
     <div class="err hidden" id="rErr"></div>
     <button type="submit" class="btn primary submit" id="btnSend">${tt('submit')}</button>
   </form>`;
-  b.querySelectorAll('.sym button').forEach(x => x.onclick = () => { rSym = +x.dataset.i; b.querySelectorAll('.sym button').forEach(y => y.setAttribute('aria-pressed', y===x)); });
+  b.querySelectorAll('.sym button').forEach(x => x.onclick = () => { const i = +x.dataset.i; if (rSym.has(i)) rSym.delete(i); else rSym.add(i); x.setAttribute('aria-pressed', rSym.has(i)); });
+  $('fDeptSel').onchange = () => { $('fDept').classList.toggle('hidden', $('fDeptSel').value !== '__other'); if ($('fDeptSel').value === '__other') $('fDept').focus(); };
   $('btnPhoto').onclick = () => $('fPhoto').click();
   $('fPhoto').onchange = e => { const f=e.target.files[0]; if(f) shrink(f).then(d=>{ rPhoto=d; $('pv').src=d; $('pv').classList.remove('hidden'); }); };
   $('rForm').onsubmit = sendReport;
@@ -181,13 +192,14 @@ async function miniMap(u){
 }
 async function sendReport(e){
   e.preventDefault();
-  const name=$('fName').value.trim(), dept=$('fDept').value.trim(), phone=$('fPhone').value.trim();
-  if (rSym==null || !name || !dept){ $('rErr').textContent=tt('need'); $('rErr').classList.remove('hidden'); return; }
+  const sel=$('fDeptSel').value, name=$('fName').value.trim(), phone=$('fPhone').value.trim();
+  const dept = sel === '__other' ? $('fDept').value.trim() : sel;
+  if (!rSym.size || !name || !dept){ $('rErr').textContent=tt('need'); $('rErr').classList.remove('hidden'); return; }
   lsSet('ac_name',name); lsSet('ac_dept',dept); lsSet('ac_phone',phone);
   const btn=$('btnSend'); btn.disabled=true; btn.textContent=tt('sending');
   try{
-    const r = await call('submitReport',{code:RU.unit.code, symptom:SYM[rSym][0], detail:$('fDetail').value.trim(), name, dept, phone, photo:rPhoto});
-    rSym=null; rPhoto='';
+    const r = await call('submitReport',{code:RU.unit.code, symptom:[...rSym].sort((a,b)=>a-b).map(i=>SYM[i][0]).join(', '), detail:$('fDetail').value.trim(), name, dept, phone, photo:rPhoto});
+    rSym=new Set(); rPhoto='';
     $('rBody').innerHTML = `<div class="card done"><div class="ok">✓</div><h3>${tt('done')}</h3><div class="rid">${esc(r.id)}</div><div class="sub">${tt('doneSub')}</div><button class="btn" id="btnAgain">${tt('again')}</button></div>`;
     $('btnAgain').onclick = async () => { RU = await call('getUnit', RU.unit.code); renderReport(); };
   }catch(err){
@@ -195,7 +207,6 @@ async function sendReport(e){
     $('rErr').textContent = tt('fail') + ' ' + (err && err.message ? err.message : ''); $('rErr').classList.remove('hidden');
   }
 }
-
 
 /* 번호 직접 입력 (라벨이 훼손됐거나 주소만 열었을 때) */
 T.ko.findTitle='에어컨 번호 입력'; T.ko.findHint='라벨에 적힌 번호를 입력하세요 (예: A-2F-A01)'; T.ko.go='열기';
