@@ -130,6 +130,11 @@ h1,h2,h3,p{margin:0}
 .find .btn{height:48px}
 .skel{height:14px;border-radius:4px;background:var(--active)}
 
+.loctog{align-self:flex-start;margin-top:6px;height:40px;padding:0 4px;color:var(--brand);font-weight:600}
+.pvwrap{display:flex;flex-direction:column;gap:8px}
+.pvwrap img{max-width:100%;border-radius:8px;margin-top:8px}
+.nwarn{color:var(--st-new-ink);background:var(--st-new-bg);border-radius:8px;padding:10px 12px}
+
 body{background:var(--ground)}
 </style>
 </head>
@@ -139,6 +144,7 @@ body{background:var(--ground)}
 /* ===== 설정: Apps Script 웹앱 주소 (배포 URL, /exec 로 끝남) ===== */
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbzRN7Wy6e5zVKdybaV8wd2zudVP-UlfERDVaZ1vSEwIGsw5ewwGw9n0aRUrf5aM088q2g/exec';
 
+const FLOOR_BASE = './floors/';   /* 도면 그림 파일 (서버를 거치지 않아 빠름) */
 const P = { ac: (new URLSearchParams(location.search).get('ac') || '').trim().toUpperCase() };
 /* Google 로그인 쿠키를 보내지 않는 순수 요청 → 휴대폰의 Google 계정 상태와 무관 */
 async function api(name, params){
@@ -158,7 +164,16 @@ function toast(m){ let t=document.querySelector('.toast'); if(!t){t=document.cre
 const lsGet = k => { try{ return localStorage.getItem(k); }catch(e){ return null; } };
 const lsSet = (k,v) => { try{ localStorage.setItem(k,v); }catch(e){} };
 const imgCache = {};
-async function floorImage(floor){ if (!imgCache[floor]) imgCache[floor] = call('getFloorImage', floor).catch(e => { delete imgCache[floor]; throw e; }); return imgCache[floor]; }
+/* 도면: GitHub 에 올린 그림 파일(FLOOR_BASE/층.png)을 먼저 쓰고, 없으면 서버(Drive)에서 받음 */
+function probeImg(url){ return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(url); i.onerror = rej; i.src = url; }); }
+async function floorImage(floor){
+  if (!imgCache[floor]){
+    const viaServer = () => call('getFloorImage', floor);
+    imgCache[floor] = (typeof FLOOR_BASE === 'string' ? probeImg(FLOOR_BASE + encodeURIComponent(floor) + '.png').catch(viaServer) : viaServer())
+      .catch(e => { delete imgCache[floor]; throw e; });
+  }
+  return imgCache[floor];
+}
 function imgSize(url){ return new Promise(r => { const i = new Image(); i.onload = () => r([i.naturalWidth, i.naturalHeight]); i.onerror = () => r([1600,800]); i.src = url; }); }
 const ICON = {
   check:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
@@ -190,19 +205,33 @@ const SYM = [
 const T = {
   ko:{title:'에어컨 고장 신고', sub:'증상을 고르고 이름과 부서를 적어 보내면 공무팀에 바로 알림이 갑니다.', unitLbl:'에어컨 번호', floor:'층', open:'이 에어컨은 이미 신고되어 처리 중입니다', openMore:'같은 문제라면 다시 신고하지 않아도 됩니다. 다른 문제라면 아래에서 신고하세요.',
       sym:'어떤 문제인가요?', symMulti:'여러 개 선택 가능', deptPick:'부서를 고르세요', deptOther:'기타 (직접 입력)', detail:'자세한 내용', opt:'(선택)', name:'이름', dept:'부서', phone:'연락처', photo:'사진', photoBtn:'사진 찍기 / 고르기', photoAgain:'사진 바꾸기',
-      submit:'신고 보내기', sending:'보내는 중…', need:'증상을 하나 이상 고르고 이름과 부서를 입력하세요.', done:'신고가 접수되었습니다', doneSub:'공무팀에 바로 알렸습니다. 문의할 때 이 접수번호를 알려 주세요.',
+      submit:'신고 보내기', sending:'보내는 중…', need:'증상을 하나 이상 고르고 이름과 부서를 입력하세요.', done:'신고가 접수되었습니다', doneSub:'문의할 때 이 접수번호를 알려 주세요.',
       again:'다른 문제 신고하기', notFound:'등록되지 않은 에어컨 번호입니다', notFoundSub:'라벨에 적힌 번호를 공무팀에 알려 주세요.', fail:'보내지 못했습니다. 다시 눌러 주세요.', loadFail:'정보를 불러오지 못했습니다. 인터넷 연결을 확인하고 다시 열어 주세요.', retry:'다시 시도',
       status:{접수:'접수',처리중:'처리중',보류:'보류'}, foot:'Elentec Vietnam Energy · 공무팀',
-      findTitle:'에어컨 번호 입력', findHint:'라벨에 적힌 번호를 입력하세요. 예: A-2F-A01', go:'열기'},
+      findTitle:'에어컨 번호 입력', findHint:'라벨에 적힌 번호를 입력하세요. 예: A-2F-A01', go:'열기',
+      showLoc:'설치 위치 보기', hideLoc:'위치 접기', photoBusy:'사진 준비 중…', photoFail:'사진을 읽지 못했습니다. 다른 사진을 고르세요.', photoDel:'사진 삭제',
+      checking:'접수 확인 중… 화면을 닫지 마세요', atLbl:'접수 시각',
+      nOk:'공무팀에 알림을 보냈습니다.', nFail:'접수는 되었지만 공무팀 알림 전송에 실패했습니다. 급하면 공무팀에 전화해 주세요.', nPartial:'접수되었습니다. 알림 일부가 전송되지 않았습니다.', nOff:'접수되었습니다. 공무팀이 현황판에서 확인합니다.', nDup:'이미 접수된 신고입니다 (같은 신고를 다시 보내지 않았습니다).',
+      unsure:'응답을 받지 못했습니다. 접수 여부를 다시 확인합니다…', unsureFail:'접수 여부를 확인하지 못했습니다. 잠시 후 [신고 보내기]를 다시 누르세요. 같은 신고는 두 번 접수되지 않습니다.'},
   vi:{title:'Báo hỏng điều hòa', sub:'Chọn sự cố, nhập họ tên và bộ phận rồi gửi. Phòng Công vụ sẽ nhận thông báo ngay.', unitLbl:'Mã điều hòa', floor:'Tầng', open:'Máy này đã được báo hỏng và đang xử lý', openMore:'Nếu cùng sự cố, không cần báo lại. Nếu khác, hãy báo bên dưới.',
       sym:'Sự cố là gì?', symMulti:'có thể chọn nhiều', deptPick:'Chọn bộ phận', deptOther:'Khác (tự nhập)', detail:'Mô tả thêm', opt:'(không bắt buộc)', name:'Họ tên', dept:'Bộ phận', phone:'Số điện thoại', photo:'Ảnh', photoBtn:'Chụp / chọn ảnh', photoAgain:'Đổi ảnh',
-      submit:'Gửi báo hỏng', sending:'Đang gửi…', need:'Hãy chọn ít nhất một sự cố và nhập họ tên, bộ phận.', done:'Đã nhận báo hỏng', doneSub:'Đã thông báo ngay cho Phòng Công vụ. Khi hỏi tiến độ, hãy đọc mã này.',
+      submit:'Gửi báo hỏng', sending:'Đang gửi…', need:'Hãy chọn ít nhất một sự cố và nhập họ tên, bộ phận.', done:'Đã nhận báo hỏng', doneSub:'Khi hỏi tiến độ, hãy đọc mã này.',
       again:'Báo sự cố khác', notFound:'Mã điều hòa chưa được đăng ký', notFoundSub:'Hãy báo mã trên tem cho Phòng Công vụ.', fail:'Gửi không thành công. Hãy bấm lại.', loadFail:'Không tải được thông tin. Kiểm tra kết nối mạng rồi mở lại.', retry:'Thử lại',
       status:{접수:'Đã nhận',처리중:'Đang xử lý',보류:'Tạm hoãn'}, foot:'Elentec Vietnam Energy · Phòng Công vụ',
-      findTitle:'Nhập mã điều hòa', findHint:'Nhập mã trên tem. VD: A-2F-A01', go:'Mở'}
+      findTitle:'Nhập mã điều hòa', findHint:'Nhập mã trên tem. VD: A-2F-A01', go:'Mở',
+      showLoc:'Xem vị trí lắp đặt', hideLoc:'Ẩn vị trí', photoBusy:'Đang xử lý ảnh…', photoFail:'Không đọc được ảnh. Hãy chọn ảnh khác.', photoDel:'Xóa ảnh',
+      checking:'Đang xác nhận… Đừng đóng màn hình', atLbl:'Thời gian nhận',
+      nOk:'Đã thông báo cho Phòng Công vụ.', nFail:'Đã nhận báo hỏng nhưng gửi thông báo cho Phòng Công vụ thất bại. Nếu gấp, hãy gọi điện cho Phòng Công vụ.', nPartial:'Đã nhận. Một phần thông báo chưa gửi được.', nOff:'Đã nhận. Phòng Công vụ sẽ kiểm tra trên bảng theo dõi.', nDup:'Báo hỏng này đã được nhận trước đó (không gửi trùng).',
+      unsure:'Chưa nhận được phản hồi. Đang kiểm tra lại…', unsureFail:'Chưa xác nhận được. Hãy bấm [Gửi báo hỏng] lại sau ít phút. Cùng một báo hỏng sẽ không bị nhận hai lần.'}
 };
 let lang = lsGet('ac_lang') || ((navigator.language||'').toLowerCase().startsWith('ko') ? 'ko' : 'vi');
-let RU = null, rSym = new Set(), rPhoto = '', rLoadErr = false;
+let RU = null, rSym = new Set(), rPhoto = '', rLoadErr = false, rForm = {}, rRid = '', rLocOpen = false, rBusy = false;
+const newRid = () => (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
+/* 작성 중인 값 보관 (언어 전환·다시 그리기에도 유지) */
+function keepForm(){
+  if (!$('rForm')) return;
+  rForm = { detail:$('fDetail').value, name:$('fName').value, deptSel:$('fDeptSel').value, deptOther:$('fDept').value, phone:$('fPhone').value };
+}
 
 function reportShell(){
   $('report').innerHTML = `
@@ -217,16 +246,16 @@ async function loadUnit(){
   try { RU = await call('getUnit', P.ac); rLoadErr = false; } catch(e){ RU = null; rLoadErr = true; }
   renderReport();
 }
-function setLang(l){ lang=l; lsSet('ac_lang',l); document.documentElement.lang = l; $('lgVi').setAttribute('aria-pressed', l==='vi'); $('lgKo').setAttribute('aria-pressed', l==='ko'); renderReport(); }
+function setLang(l){ keepForm(); lang=l; lsSet('ac_lang',l); document.documentElement.lang = l; $('lgVi').setAttribute('aria-pressed', l==='vi'); $('lgKo').setAttribute('aria-pressed', l==='ko'); renderReport(); }
 function tt(k){ return T[lang][k]; }
 function deptField(){
   const list = (RU && RU.depts && RU.depts.length) ? RU.depts : [];
-  const last = lsGet('ac_dept') || '';
+  const last = rForm.deptSel ? (rForm.deptSel === '__other' ? (rForm.deptOther || ' ') : rForm.deptSel) : (lsGet('ac_dept') || '');
   const inList = list.indexOf(last) >= 0;
   const opts = [`<option value="">${tt('deptPick')}</option>`]
     .concat(list.map(d => `<option value="${esc(d)}"${d===last?' selected':''}>${esc(d)}</option>`))
     .concat([`<option value="__other"${(!inList && last)?' selected':''}>${tt('deptOther')}</option>`]);
-  return `<select id="fDeptSel">${opts.join('')}</select><input id="fDept" class="${(!inList && last)?'':'hidden'}" placeholder="${tt('deptOther')}" aria-label="${tt('dept')}" value="${(!inList && last)?esc(last):''}">`;
+  return `<select id="fDeptSel">${opts.join('')}</select><input id="fDept" class="${(!inList && last)?'':'hidden'}" placeholder="${tt('deptOther')}" aria-label="${tt('dept')}" value="${(!inList && last)?esc(last.trim()):''}">`;
 }
 function symText(ko){ return String(ko||'').split(/\s*,\s*/).map(k => { const s=SYM.find(x=>x[0]===k); return s ? (lang==='vi'? s[1] : s[0]) : k; }).join(', '); }
 
@@ -253,20 +282,21 @@ function renderReport(){
     <div class="lbl">${tt('unitLbl')}</div>
     <div class="code">${esc(u.code)}</div>
     <div class="sub">${tt('floor')} ${esc(u.floor)}${u.loc ? ' · ' + esc(u.loc) : ''}</div>
-    ${u.x!=null ? '<div class="mini" id="mini"></div>' : ''}
+    ${u.x!=null ? `<button type="button" class="btn ghost loctog" id="btnLoc" aria-expanded="${rLocOpen}">${rLocOpen?tt('hideLoc'):tt('showLoc')}</button><div class="mini${rLocOpen?'':' hidden'}" id="mini"></div>` : ''}
   </div>
   ${RU.open.length ? `<div class="notice" role="status"><b>${tt('open')}</b><ul>${RU.open.map(o=>`<li>${esc(symText(o.symptom))} · ${esc(tt('status')[o.status]||o.status)} · ${esc(o.at)}</li>`).join('')}</ul>${tt('openMore')}</div>` : ''}
   <form class="rcard" id="rForm" novalidate>
     <h2>${tt('sym')}<small>${tt('symMulti')}</small></h2>
     <div class="sym" style="margin-top:-6px">${SYM.map((s,i)=>`<button type="button" data-i="${i}" aria-pressed="${rSym.has(i)}">${esc(lang==='vi'? s[1] : s[0])}${lang==='vi'?`<small>${esc(s[0])}</small>`:''}</button>`).join('')}</div>
-    <div class="fld"><label for="fDetail">${tt('detail')} <span class="opt">${tt('opt')}</span></label><textarea id="fDetail"></textarea></div>
-    <div class="fld"><label for="fName">${tt('name')}</label><input id="fName" autocomplete="name" value="${esc(lsGet('ac_name')||'')}"></div>
+    <div class="fld"><label for="fDetail">${tt('detail')} <span class="opt">${tt('opt')}</span></label><textarea id="fDetail">${esc(rForm.detail||'')}</textarea></div>
+    <div class="fld"><label for="fName">${tt('name')}</label><input id="fName" autocomplete="name" value="${esc(rForm.name!=null?rForm.name:(lsGet('ac_name')||''))}"></div>
     <div class="fld"><label for="fDeptSel">${tt('dept')}</label>${deptField()}</div>
-    <div class="fld"><label for="fPhone">${tt('phone')} <span class="opt">${tt('opt')}</span></label><input id="fPhone" type="tel" inputmode="tel" autocomplete="tel" value="${esc(lsGet('ac_phone')||'')}"></div>
+    <div class="fld"><label for="fPhone">${tt('phone')} <span class="opt">${tt('opt')}</span></label><input id="fPhone" type="tel" inputmode="tel" autocomplete="tel" value="${esc(rForm.phone!=null?rForm.phone:(lsGet('ac_phone')||''))}"></div>
     <div class="fld photo"><label for="btnPhoto">${tt('photo')} <span class="opt">${tt('opt')}</span></label>
       <input id="fPhoto" type="file" accept="image/*" capture="environment" class="hidden">
       <button type="button" class="btn" id="btnPhoto">${ICON.camera}<span>${rPhoto?tt('photoAgain'):tt('photoBtn')}</span></button>
-      <img id="pv" class="${rPhoto?'':'hidden'}" src="${rPhoto}" alt="">
+      <div class="pvwrap${rPhoto?'':' hidden'}" id="pvWrap"><img id="pv" src="${rPhoto}" alt=""><button type="button" class="btn" id="btnPhotoDel">${tt('photoDel')}</button></div>
+      <div class="rsub hidden" id="photoMsg" role="status"></div>
     </div>
     <div class="rerr hidden" id="rErr" role="alert"></div>
     <button type="submit" class="btn primary submit" id="btnSend">${tt('submit')}</button>
@@ -274,30 +304,55 @@ function renderReport(){
   b.querySelectorAll('.sym button').forEach(x => x.onclick = () => { const i = +x.dataset.i; if (rSym.has(i)) rSym.delete(i); else rSym.add(i); x.setAttribute('aria-pressed', rSym.has(i)); });
   $('fDeptSel').onchange = () => { $('fDept').classList.toggle('hidden', $('fDeptSel').value !== '__other'); if ($('fDeptSel').value === '__other') $('fDept').focus(); };
   $('btnPhoto').onclick = () => $('fPhoto').click();
-  $('fPhoto').onchange = e => { const f=e.target.files[0]; if(f) shrink(f).then(d=>{ rPhoto=d; $('pv').src=d; $('pv').classList.remove('hidden'); $('btnPhoto').querySelector('span').textContent=tt('photoAgain'); }); };
+  $('fPhoto').onchange = e => { const f=e.target.files[0]; e.target.value=''; if(!f) return;
+    const msg=$('photoMsg'), btn=$('btnPhoto'); msg.textContent=tt('photoBusy'); msg.classList.remove('hidden'); btn.disabled=true;
+    shrink(f).then(d=>{ rPhoto=d; $('pv').src=d; $('pvWrap').classList.remove('hidden'); btn.querySelector('span').textContent=tt('photoAgain'); msg.classList.add('hidden'); })
+      .catch(()=>{ msg.textContent=tt('photoFail'); })
+      .finally(()=>{ btn.disabled=false; }); };
+  $('btnPhotoDel').onclick = () => { rPhoto=''; $('pv').src=''; $('pvWrap').classList.add('hidden'); $('btnPhoto').querySelector('span').textContent=tt('photoBtn'); };
   $('rForm').onsubmit = sendReport;
-  if (u.x != null) miniMap(u, $('mini'), '접수');
+  if ($('btnLoc')) $('btnLoc').onclick = () => { rLocOpen = !rLocOpen; $('mini').classList.toggle('hidden', !rLocOpen); $('btnLoc').setAttribute('aria-expanded', rLocOpen); $('btnLoc').textContent = rLocOpen ? tt('hideLoc') : tt('showLoc'); if (rLocOpen && !$('mini')._m) miniMap(u, $('mini'), '접수').then(m => { $('mini')._m = m; }); };
+  if (u.x != null && rLocOpen) miniMap(u, $('mini'), '접수').then(m => { $('mini')._m = m; });
 }
 function shrink(file){
-  return new Promise(res => { const fr=new FileReader(); fr.onload=()=>{ const im=new Image(); im.onload=()=>{ const m=1280, s=Math.min(1,m/Math.max(im.width,im.height)); const c=document.createElement('canvas'); c.width=Math.round(im.width*s); c.height=Math.round(im.height*s); c.getContext('2d').drawImage(im,0,0,c.width,c.height); res(c.toDataURL('image/jpeg',0.8)); }; im.src=fr.result; }; fr.readAsDataURL(file); });
+  return new Promise((res, rej) => { const fr=new FileReader(); fr.onerror=rej; fr.onload=()=>{ const im=new Image(); im.onerror=rej; im.onload=()=>{ const m=1280, s=Math.min(1,m/Math.max(im.width,im.height)); const c=document.createElement('canvas'); c.width=Math.round(im.width*s); c.height=Math.round(im.height*s); c.getContext('2d').drawImage(im,0,0,c.width,c.height); res(c.toDataURL('image/jpeg',0.8)); }; im.src=fr.result; }; fr.readAsDataURL(file); });
 }
 async function sendReport(e){
   e.preventDefault();
+  if (rBusy) return;
   const sel=$('fDeptSel').value, name=$('fName').value.trim(), phone=$('fPhone').value.trim();
   const dept = sel === '__other' ? $('fDept').value.trim() : sel;
   if (!rSym.size || !name || !dept){ $('rErr').textContent=tt('need'); $('rErr').classList.remove('hidden'); return; }
-  lsSet('ac_name',name); lsSet('ac_dept',dept); lsSet('ac_phone',phone);
-  const btn=$('btnSend'); btn.disabled=true; btn.textContent=tt('sending');
-  try{
-    const r = await call('submitReport',{code:RU.unit.code, symptom:[...rSym].sort((a,b)=>a-b).map(i=>SYM[i][0]).join(', '), detail:$('fDetail').value.trim(), name, dept, phone, photo:rPhoto});
-    rSym=new Set(); rPhoto='';
-    $('rBody').innerHTML = `<div class="rcard done"><div class="ok">${ICON.check}</div><h2 style="font-size:20px">${tt('done')}</h2><div class="rid">${esc(r.id)}</div><p>${tt('doneSub')}</p><button class="btn" id="btnAgain" style="height:44px">${tt('again')}</button></div>`;
-    window.scrollTo(0,0);
-    $('btnAgain').onclick = loadUnit;
-  }catch(err){
-    btn.disabled=false; btn.textContent=tt('submit');
-    $('rErr').textContent = tt('fail') + ' ' + (err && err.message ? err.message : ''); $('rErr').classList.remove('hidden');
+  keepForm(); lsSet('ac_name',name); lsSet('ac_dept',dept); lsSet('ac_phone',phone);
+  if (!rRid) rRid = newRid();           // 같은 신고를 다시 보내도 서버가 한 번만 접수 (응답 유실 대비)
+  const payload = {rid:rRid, code:RU.unit.code, symptom:[...rSym].sort((a,b)=>a-b).map(i=>SYM[i][0]).join(', '), detail:$('fDetail').value.trim(), name, dept, phone, photo:rPhoto};
+  const btn=$('btnSend'); rBusy = true; btn.disabled=true; btn.textContent=tt('sending'); $('rErr').classList.add('hidden');
+  let r = null, lastErr = null;
+  for (let attempt = 0; attempt < 3 && !r; attempt++){
+    try { r = await call('submitReport', payload); }
+    catch(err){
+      lastErr = err;
+      const netFail = !err || err.name === 'TypeError' || /network|fetch|Failed|timeout/i.test(String(err.message || err));
+      if (!netFail) break;                // 서버가 거부한 오류(제한·검증)는 재시도하지 않음
+      btn.textContent = tt('checking'); $('rErr').textContent = tt('unsure'); $('rErr').classList.remove('hidden');
+      await new Promise(z => setTimeout(z, 1500 * (attempt + 1)));
+    }
   }
+  rBusy = false;
+  if (!r){
+    btn.disabled=false; btn.textContent=tt('submit');
+    const m = lastErr && lastErr.message ? lastErr.message : '';
+    $('rErr').textContent = /network|fetch|Failed|timeout/i.test(m) || !m ? tt('unsureFail') : tt('fail') + ' ' + m;
+    $('rErr').classList.remove('hidden'); return;
+  }
+  rSym=new Set(); rPhoto=''; rRid=''; rForm={};
+  /* r.dup = 응답을 못 받아 다시 보낸 경우 서버가 앞의 접수 결과를 돌려준 것 → 사용자에게는 정상 접수로 안내 */
+  const nKey = ({ok:'nOk', fail:'nFail', partial:'nPartial', off:'nOff'})[r.notified] || 'nOff';
+  $('rBody').innerHTML = `<div class="rcard done"><div class="ok">${ICON.check}</div><h2 style="font-size:20px">${tt('done')}</h2><div class="rid">${esc(r.id)}</div>
+    ${r.at ? `<p class="num">${tt('atLbl')} ${esc(r.at)}</p>` : ''}<p class="${r.notified==='fail'||r.notified==='partial'?'nwarn':''}">${tt(nKey)}</p><p>${tt('doneSub')}</p>
+    <button class="btn" id="btnAgain" style="height:44px">${tt('again')}</button></div>`;
+  window.scrollTo(0,0);
+  $('btnAgain').onclick = loadUnit;
 }
 function startReport(){
   $('report').classList.remove('hidden');
