@@ -1,5 +1,5 @@
 /* EPC 에어컨 현황 앱 — 화면 파일 캐시 (데이터는 캐시하지 않음) */
-const V = 'ac-app-v4.4';
+const V = 'ac-app-v4.5';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', '../floors/A-1F.png', '../floors/A-2F.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(V).then(c => Promise.all(SHELL.map(u => c.add(u).catch(() => null)))).then(() => self.skipWaiting()));

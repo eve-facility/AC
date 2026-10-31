@@ -1186,6 +1186,7 @@ function renderDetail(r, el, ctx, keep){
         <button class="btn big" data-a="save">조치 내용만 저장</button>
         <span class="sp"></span>
         ${OPEN.includes(r.status) ? '<button class="btn ghost danger" data-a="cancel">신고 취소</button>' : ''}
+        <button class="btn ghost danger" data-a="del" title="오입력·중복·시험 신고를 목록에서 지웁니다">신고 삭제</button>
       </div>
       <p class="dnote">저장할 때마다 처리 이력에 남습니다 · 처리자 ${esc(adminName())}</p>
     </div>`;
@@ -1231,6 +1232,48 @@ function renderDetail(r, el, ctx, keep){
   q('save').onclick = e => save('', e.currentTarget);
   q('save')._save = () => save('', q('save'));
   if (q('cancel')) q('cancel').onclick = e => save('취소', e.currentTarget);
+  q('del').onclick = () => askDelete(r, ctx);
+}
+
+/* 신고 삭제 (오입력·중복·시험). 원본은 시트 '삭제기록'에 남음 */
+function askDelete(r, ctx){
+  const m = document.createElement('div'); m.className = 'modal';
+  m.innerHTML = `<form class="box" role="alertdialog" aria-labelledby="dT"><h2 id="dT">이 신고를 삭제할까요?</h2>
+    <p><b style="color:var(--text)">${esc(r.code)}</b> · ${esc(r.id)} · ${esc(r.symptom)}<br>현황판·신고 처리·이력 조회에서 사라지고 통계에서도 빠집니다. 원본은 시트의 '삭제기록'에 남습니다.</p>
+    <p style="margin-top:0">고장이 아니었던 신고는 삭제하지 말고 <b>신고 취소</b>로 남기세요. 삭제는 잘못 넣은 신고에만 씁니다.</p>
+    <div class="chips">${['오입력','중복 신고','시험 신고'].map(t => `<button type="button" class="chip" data-r="${t}">${t}</button>`).join('')}</div>
+    <textarea id="delWhy" aria-label="삭제 사유" placeholder="삭제 사유 (필수)" style="border:1px solid var(--control);border-radius:6px;padding:10px 12px;min-height:72px;font:inherit;font-size:16px"></textarea>
+    <div class="err" id="delErr" role="alert" style="color:var(--st-new-ink);font-size:13px"></div>
+    <div class="acts"><button type="button" class="btn" data-x>닫기</button><button class="btn primary" style="background:var(--st-new-ink);border-color:var(--st-new-ink)">삭제</button></div></form>`;
+  document.body.append(m);
+  const why = m.querySelector('#delWhy'), errEl = m.querySelector('#delErr'), go = m.querySelector('.btn.primary');
+  why.focus();
+  m.querySelectorAll('[data-r]').forEach(b => b.onclick = () => { m.querySelectorAll('[data-r]').forEach(x => x.classList.toggle('sel', x === b)); why.value = b.dataset.r; errEl.textContent = ''; why.focus(); });
+  why.oninput = () => { errEl.textContent = ''; };
+  m.querySelector('[data-x]').onclick = () => m.remove();
+  m.onclick = e => { if (e.target === m) m.remove(); };
+  m.querySelector('form').onsubmit = async e => {
+    e.preventDefault();
+    const reason = why.value.trim();
+    if (reason.length < 2){ errEl.textContent = '삭제 사유를 입력하세요.'; why.focus(); return; }
+    go.disabled = true; go.textContent = '삭제 중…'; errEl.textContent = '';
+    try{
+      await acall('adminDeleteReport', r.id, reason, r.ver);
+      m.remove(); setDirty(false); delete unitHist[r.code];
+      adminData = adminData.filter(x => x.id !== r.id);
+      if (D) D.open = D.open.filter(o => o.id !== r.id);
+      hRows = (hRows || []).filter(x => x.id !== r.id); if (typeof hTotal === 'number' && hTotal > 0) hTotal--;
+      toast(r.code + ' · ' + r.id + ' 삭제했습니다');
+      if (ctx === 'drawer') closeDrawer(); else { qSel = null; $('inbox').classList.remove('open'); }
+      await renderAll();
+      if (view === 'history' && hQuery) renderHistory(hQuery);
+    }catch(x){
+      const msg = String(x && x.message || x).replace(/^Error:\s*/, '');
+      go.disabled = false; go.textContent = '삭제';
+      errEl.textContent = /^CONFLICT/.test(msg) ? '다른 관리자가 방금 이 신고를 수정했습니다. 닫고 최신 내용을 확인한 뒤 다시 삭제하세요.' : '삭제하지 못했습니다. ' + msg;
+      if (/^CONFLICT|찾을 수 없/.test(msg)) refresh();
+    }
+  };
 }
 
 /* 저장 결과를 화면 데이터(관리자 목록 + 현황판 요약)에 바로 반영 */
